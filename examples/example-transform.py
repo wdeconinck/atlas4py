@@ -50,7 +50,7 @@ def plot_spectrum(field_sp):
          spectrum[n] = math.sqrt(v)
 
       import matplotlib.pyplot as plt
-      wavenumber = np.linspace(0, truncation, len(spectrum))
+      wavenumber = np.linspace(0, T, len(spectrum))
 
       # Create the plot
       plt.plot(wavenumber, spectrum)
@@ -62,63 +62,73 @@ def plot_spectrum(field_sp):
       plt.xlabel('wave number')
       plt.ylabel('spectrum')
       plt.title(field_sp.name)
-      plt.show()
+
+      print("writing file transform-spectrum.png")
+      plt.savefig('transform-spectrum.png')   # save the figure to file
 
 def plot_gridpoint(grid,field_gp):
    # Visualisation of gridpoint field with gmsh
    fs = field_gp.functionspace
    mesh = atlas.MeshGenerator(type='structured',three_dimensional=(fs.nb_parts==1)).generate(grid)
    if fs.part == 0:
-      print('writing file transform.msh')
-   atlas.Gmsh("transform.msh", coordinates='xyz').write(mesh).write(field_gp)
+      print('writing file transform-mesh.msh')
+   atlas.Gmsh("transform-mesh.msh", coordinates='xyz').write(mesh).write(field_gp)
 
 # ------------------------------------------------------------------------
 # Start here
 # ------------------------------------------------------------------------
 
-atlas.initialize() # Required
+def run(grib_file_path):
+  atlas.initialize() # Required
 
-assert atlas.Trans.has_backend("ectrans")
+  assert atlas.Trans.has_backend("ectrans")
 
-grib = Grib()
-# grib.read_from_file('sporog_159_4_gg_GAUSS.grb')
-# grib.read_from_file('packingType=spectral_complex.grib2')
-grib.read_from_file('/Users/willem/work/atlas-examples/build/q-O1280.grib')
+  grib = Grib()
+  grib.read_from_file(grib_file_path)
 
-grid = atlas.Grid(grib.grid_name)
-truncation = grib.spectral_truncation
+  grid = atlas.Grid(grib.grid_name)
+  truncation = grib.spectral_truncation
 
-atlas.Trans.backend("ectrans")
-partitioner = atlas.Partitioner("ectrans")
+  atlas.Trans.backend("ectrans")
+  partitioner = atlas.Partitioner("ectrans")
 
-# Create function spaces
-fs_gp = atlas.functionspace.StructuredColumns(grid, partitioner, halo=0)
-fs_sp = atlas.functionspace.Spectral(truncation)
+  # Create function spaces
+  fs_gp = atlas.functionspace.StructuredColumns(grid, partitioner, halo=0)
+  fs_sp = atlas.functionspace.Spectral(truncation)
 
-trans = atlas.Trans(grid, truncation)
+  trans = atlas.Trans(grid, truncation)
 
-# Create fields (already distributed)
-field_sp = fs_sp.create_field(name=grib.name)
-field_gp = fs_gp.create_field(name=grib.name)
+  # Create fields (already distributed)
+  field_sp = fs_sp.create_field(name=grib.name)
+  field_gp = fs_gp.create_field(name=grib.name)
 
-if grib.type == 'sh':
-   field_sp_glb = fs_sp.create_field_global(name=grib.name)
-   if fs_sp.part == 0:
-      sp = atlas.make_view(field_sp_glb)
-      sp[:len(grib.values)] = grib.values[:]
-   fs_sp.scatter(field_sp_glb,field_sp)
-   trans.invtrans(field_sp, field_gp)
+  if grib.type == 'sh':
+     field_sp_glb = fs_sp.create_field_global(name=grib.name)
+     if fs_sp.part == 0:
+        sp = atlas.make_view(field_sp_glb)
+        sp[:len(grib.values)] = grib.values[:]
+     fs_sp.scatter(field_sp_glb,field_sp)
+     trans.invtrans(field_sp, field_gp)
 
-else:
-   field_gp_glb = fs_gp.create_field_global(name=grib.name)
-   if fs_gp.part == 0:
-     gp = atlas.make_view(field_gp_glb)
-     gp[:len(grib.values)] = grib.values[:]
-   fs_gp.scatter(field_gp_glb,field_gp)
-   trans.dirtrans(field_gp, field_sp)
+  else:
+     field_gp_glb = fs_gp.create_field_global(name=grib.name)
+     if fs_gp.part == 0:
+       gp = atlas.make_view(field_gp_glb)
+       gp[:len(grib.values)] = grib.values[:]
+     fs_gp.scatter(field_gp_glb,field_gp)
+     trans.dirtrans(field_gp, field_sp)
 
-plot_gridpoint(grid,field_gp)
-plot_spectrum(field_sp)
+  plot_gridpoint(grid,field_gp)
+  plot_spectrum(field_sp)
 
-atlas.finalize()
+  atlas.finalize()
+
+
+def main():
+    import sys
+    grib_file_path = sys.argv[1]
+    run(grib_file_path)
+
+if __name__ == '__main__':
+    main()
 # ------------------------------------------------------------------------
