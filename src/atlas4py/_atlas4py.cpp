@@ -380,7 +380,10 @@ PYBIND11_MODULE( _atlas4py, m ) {
         .def_property_readonly( "projection", &Mesh::projection )
         .def_property( "nodes", py::overload_cast<>( &Mesh::nodes, py::const_ ), py::overload_cast<>( &Mesh::nodes ) )
         .def_property( "edges", py::overload_cast<>( &Mesh::edges, py::const_ ), py::overload_cast<>( &Mesh::edges ) )
-        .def_property( "cells", py::overload_cast<>( &Mesh::cells, py::const_ ), py::overload_cast<>( &Mesh::cells ) );
+        .def_property( "cells", py::overload_cast<>( &Mesh::cells, py::const_ ), py::overload_cast<>( &Mesh::cells ) )
+        .def_property( "metadata", py::overload_cast<>( &Mesh::metadata, py::const_ ), py::overload_cast<>( &Mesh::metadata ) )
+        .def_property_readonly( "part", &Mesh::part )
+        .def_property_readonly( "nb_parts", &Mesh::nb_parts );
     m.def( "build_edges", []( Mesh& mesh, std::optional<std::reference_wrapper<eckit::Configuration>> const& config ) {
         if(config)
             mesh::actions::build_edges( mesh, config.value().get());
