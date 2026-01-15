@@ -4,6 +4,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <dlpack/dlpack.h>
+
 #include "atlas/functionspace.h"
 #include "atlas/grid.h"
 #include "atlas/mesh.h"
