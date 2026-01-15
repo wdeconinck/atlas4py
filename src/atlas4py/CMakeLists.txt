@@ -74,15 +74,10 @@ if(NOT atlas_FOUND)
     endif()
 endif()
 
-find_package( pybind11 )
-if( NOT pybind11_FOUND )
-  FetchContent_Declare(
-    pybind11
-    GIT_REPOSITORY https://github.com/pybind/pybind11.git
-    GIT_TAG        v${ATLAS4PY_PYBIND11_VERSION}
-  )
-  FetchContent_MakeAvailable(pybind11)
-endif()
+# https://github.com/cpm-cmake/CPM.cmake
+include (cmake/get_cpm.cmake)
+set(PYBIND11_FINDPYTHON NEW)
+CPMAddPackage("gh:pybind/pybind11@3.0") # CPMAddPackage("gh:pybind/pybind11@${ATLAS4PY_PYBIND11_VERSION}")
 
 pybind11_add_module(_atlas4py _atlas4py.cpp)
-target_link_libraries(_atlas4py PUBLIC atlas)
+target_link_libraries(_atlas4py PRIVATE atlas)
