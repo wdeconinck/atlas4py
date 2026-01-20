@@ -201,7 +201,140 @@ array::DataType pybindToAtlas( py::dtype const& dtype ) {
 
 }  // namespace
 
+void pybind_dlpack(pybind11::module_ &m);
+
+DLDataType get_dlpack_dtype(atlas::array::DataType const& datatype) {
+    DLDataType dl_dtype;
+    switch (datatype.kind()) {
+    case atlas::array::DataType::KIND_INT32:
+        dl_dtype.code = kDLInt;
+        dl_dtype.bits = 8 * sizeof(int32_t);
+        dl_dtype.lanes = 1;
+        break;
+    case atlas::array::DataType::KIND_INT64:
+        dl_dtype.code = kDLInt;
+        dl_dtype.bits = 8 * sizeof(int64_t);
+        dl_dtype.lanes = 1;
+        break;
+    case atlas::array::DataType::KIND_REAL32:
+        dl_dtype.code = kDLFloat;
+        dl_dtype.bits = 8 * sizeof(float);
+        dl_dtype.lanes = 1;
+        break;
+    case atlas::array::DataType::KIND_REAL64:
+        dl_dtype.code = kDLFloat;
+        dl_dtype.bits = 8 * sizeof(double);
+        dl_dtype.lanes = 1;
+        break;
+    default:
+        throw std::runtime_error("Unsupported data type for DLPack conversion");
+    }
+    return dl_dtype;
+}
+
+void dl_tensor_deleter(DLManagedTensor* self) {
+  delete[] self->dl_tensor.shape;
+  delete[] self->dl_tensor.strides;
+  // Invalidate tensor
+  self->dl_tensor.data = nullptr;
+  self->dl_tensor.ndim = 0;
+  self->dl_tensor.shape = nullptr;
+  self->dl_tensor.strides = nullptr;
+  self->dl_tensor.byte_offset = 0;
+}
+
+void dl_capsule_deleter(PyObject *capsule) {
+  void *raw_ptr = nullptr;
+  // Can be original name if unused "dltensor"
+  if (strcmp("dltensor", PyCapsule_GetName(capsule)) == 0) {
+    raw_ptr = PyCapsule_GetPointer(capsule, "dltensor");
+  }
+  else { // "used_dltensor if capsule is consumed
+    raw_ptr = PyCapsule_GetPointer(capsule, "used_dltensor");
+  }
+
+  if (raw_ptr) { // Unknown capsule or already freed capsule
+    DLManagedTensor* tensor_ptr = static_cast<DLManagedTensor*>(raw_ptr);
+    if (tensor_ptr->deleter) // Execute custom deleter, here delete[] shape.
+      tensor_ptr->deleter(tensor_ptr);
+  }
+}
+
+pybind11::capsule get_dlpack_tensor(atlas::array::Array& array) {
+    DLTensor dl_tensor;
+    dl_tensor.data = array.data();
+    dl_tensor.device.device_type = DLDeviceType::kDLCPU;
+    dl_tensor.device.device_id = 0;
+    dl_tensor.dtype = get_dlpack_dtype(array.datatype());
+    dl_tensor.ndim = array.rank();
+    auto shape_ptr = std::make_unique<int64_t[]>(dl_tensor.ndim);
+    dl_tensor.shape = shape_ptr.get();
+    std::copy(array.shape().begin(), array.shape().end(), dl_tensor.shape); // Init with correct shape
+    auto strides_ptr = std::make_unique<int64_t[]>(dl_tensor.ndim);
+    dl_tensor.strides = strides_ptr.get();
+    std::copy(array.strides().begin(), array.strides().end(), dl_tensor.strides); // Init with correct shape
+    dl_tensor.byte_offset = 0;
+
+    auto tensor = std::make_unique<DLManagedTensor>();
+    tensor->dl_tensor = dl_tensor;
+    tensor->manager_ctx = &array;
+    tensor->deleter = &dl_tensor_deleter;
+
+    // Release unique pointer to capsule, as we transfer ownership to the
+    // python capsule.
+    shape_ptr.release();
+    strides_ptr.release();
+    return py::capsule(tensor.release(), "dltensor", &dl_capsule_deleter);
+}
+
+namespace {
+template <typename Value>
+atlas::Field create_field(const std::string& name, void* data, const array::ArraySpec& spec) {
+    return atlas::Field("field", static_cast<Value*>(data), spec);
+}
+
+atlas::Field create_field_from_dlpack( const py::object& object, const py::kwargs& kwargs ) {
+    py::object dlpack_capsule = object.attr("__dlpack__")(**kwargs);
+    auto* tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(dlpack_capsule.ptr(), "dltensor"));
+    if (tensor) {
+        DLTensor& dl_tensor = tensor->dl_tensor;
+        array::ArrayShape shape;
+        array::ArrayStrides strides;
+        shape.resize(dl_tensor.ndim);
+        strides.resize(dl_tensor.ndim);
+        for (int i = 0; i < dl_tensor.ndim; ++i) {
+            shape[i] = dl_tensor.shape[i];
+            strides[i] = dl_tensor.strides[i];
+        }
+        std::string name = "tmp";
+        auto spec = array::ArraySpec(std::move(shape), std::move(strides));
+        switch (dl_tensor.dtype.code) {
+            case kDLInt:
+                if (dl_tensor.dtype.bits == 32)
+                    return create_field<int>(name, dl_tensor.data, spec);
+                else if (dl_tensor.dtype.bits == 64)
+                    return create_field<long>(name, dl_tensor.data, spec);
+                else
+                    throw std::runtime_error("Unsupported integer bit-width for DLPack conversion");
+                break;
+            case kDLFloat:
+                if (dl_tensor.dtype.bits == 32)
+                    return create_field<float>(name, dl_tensor.data, spec);
+                else if (dl_tensor.dtype.bits == 64)
+                    return create_field<double>(name, dl_tensor.data, spec);
+                else
+                    throw std::runtime_error("Unsupported float bit-width for DLPack conversion");
+                break;
+            default:
+                throw std::runtime_error("Unsupported data type for DLPack conversion");
+        }
+    }
+    throw std::runtime_error("Invalid DLPack capsule");
+}
+}
+
 PYBIND11_MODULE( _atlas4py, m ) {
+    pybind_dlpack(m);
     auto m_library = m.def_submodule( "library" );
     m_library.def("initialize", []() { atlas::initialise(PySys::instance().argc, PySys::instance().argv);})
              .def("initialise", []() { atlas::initialise(PySys::instance().argc, PySys::instance().argv);})
@@ -551,6 +684,14 @@ PYBIND11_MODULE( _atlas4py, m ) {
             })
         .def("scatter", [](FunctionSpace const& fs, Field const& global, Field& local) {
                 return fs.scatter(global,local);
+            })
+        .def("halo_exchange", [](FunctionSpace const& fs, Field& field) {
+                return fs.haloExchange(field);
+            })
+        .def("halo_exchange", [](FunctionSpace const& fs, py::object array, py::kwargs kwargs) {
+                kwargs["copy"] = false;
+                Field field = create_field_from_dlpack(array, kwargs);
+                return fs.haloExchange(field);
             });
 
     py::class_<functionspace::EdgeColumns, FunctionSpace>( m_fs, "EdgeColumns" )
@@ -644,6 +785,9 @@ PYBIND11_MODULE( _atlas4py, m ) {
         } );
 
     py::class_<Field>( m, "Field", py::buffer_protocol() )
+        .def_static( "from_dlpack", []( py::object dlpack_compatible_array, py::kwargs kwargs ) {
+            return create_field_from_dlpack( dlpack_compatible_array, kwargs );
+        }, "dlpack_tensor"_a)
         .def_property_readonly( "name", &Field::name )
         .def_property_readonly( "strides", &Field::strides )
         .def_property_readonly( "shape", py::overload_cast<>( &Field::shape, py::const_ ) )
@@ -658,11 +802,28 @@ PYBIND11_MODULE( _atlas4py, m ) {
         .def_property( "halo_dirty", &Field::dirty, &Field::set_dirty, py::return_value_policy::copy)
         .def_buffer( []( Field& f ) {
             auto strides = f.strides();
+            auto sizeof_dtype = f.datatype().size();
             std::transform( strides.begin(), strides.end(), strides.begin(),
-                            [&]( auto const& stride ) { return stride * f.datatype().size(); } );
-            return py::buffer_info( f.storage(), f.datatype().size(), atlasToPybind( f.datatype() ), f.rank(),
+                            [&]( auto const& stride ) { return stride * sizeof_dtype; } );
+            return py::buffer_info( f.storage(), sizeof_dtype, atlasToPybind( f.datatype() ), f.rank(),
                                     f.shape(), strides );
-        } );
+        })
+        .def( "__dlpack__", []( Field& f, const py::object& stream) {
+            return get_dlpack_tensor(f);
+        }, py::arg("stream") = py::none() )
+        .def( "__dlpack_device__", []( Field&f ) { return std::pair<int32_t, int64_t>{kDLCPU, 0}; }
+            // Device type codes are defined in dlpack/dlpack.h
+            // CPU = 1
+            // CUDA = 2
+            // CPU_PINNED = 3
+            // OPENCL = 4
+            // VULKAN = 7
+            // METAL = 8
+            // VPI = 9
+            // ROCM = 10
+            // CUDA_MANAGED = 13
+            // ONE_API = 14
+    );
 
     py::class_<mesh::Nodes::Topology> topology( m, "Topology" );
     topology.attr( "NONE" )     = py::cast( int( mesh::Nodes::Topology::NONE ) );
@@ -816,4 +977,28 @@ PYBIND11_MODULE( _atlas4py, m ) {
     m_function.def("vortex_rollup", [](double lon, double lat, double t) { return util::function::vortex_rollup(lon,lat,t); } );
     m_function.def("spherical_harmonic", [](double lon, double lat,int n, int m ) { return util::function::spherical_harmonic(n,m,lon,lat); }, "lon"_a, "lat"_a, "n"_a, "m"_a );
 
+}
+
+
+void pybind_dlpack(py::module_ &m) {
+    py::module_ dlpack = m.def_submodule("dlpack", "DLpack python binding.");
+    py::enum_<DLDeviceType>(dlpack, "DLDeviceType")
+        .value("kDLCPU", DLDeviceType::kDLCPU)
+        .value("kDLCUDA", DLDeviceType::kDLCUDA)
+        .value("kDLCUDAHost", DLDeviceType::kDLCUDAHost)
+        .value("kDLOpenCL", DLDeviceType::kDLOpenCL)
+        .value("kDLVulkan", DLDeviceType::kDLVulkan)
+        .value("kDLMetal", DLDeviceType::kDLMetal)
+        .value("kDLVPI", DLDeviceType::kDLVPI)
+        .value("kDLROCM", DLDeviceType::kDLROCM)
+        .value("kDLROCMHost", DLDeviceType::kDLROCMHost)
+        .value("kDLExtDev", DLDeviceType::kDLExtDev)
+        .value("kDLCUDAManaged", DLDeviceType::kDLCUDAManaged)
+        .value("kDLOneAPI", DLDeviceType::kDLOneAPI)
+        .value("kDLWebGPU", DLDeviceType::kDLWebGPU)
+        // .value("kDLHexagon", kDLHexagon::kDLHexagon)
+        .value("kDLMAIA", kDLMAIA)
+        .export_values(); // DLPack is C, so we don't have strongly typed enums
+    dlpack.attr("DLPACK_MAJOR_VERSION") = DLPACK_MAJOR_VERSION;
+    dlpack.attr("DLPACK_MINOR_VERSION") = DLPACK_MINOR_VERSION;
 }
