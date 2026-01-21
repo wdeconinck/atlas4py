@@ -7,6 +7,8 @@
 #include "submodules/_atlas4py.dlpack.h"
 #include "submodules/_atlas4py.function.h"
 #include "submodules/_atlas4py.functionspace.h"
+#include "submodules/_atlas4py.mpi.h"
+
 #include "pybind_config.h"
 #include "pybind_datatype.h"
 #include "pybind_point.h"
@@ -30,6 +32,7 @@ PYBIND11_MODULE( _atlas4py, m ) {
      .def("finalize",   []() { atlas4py::pybind_library_finalize(); })
      .def("finalise",   []() { atlas4py::pybind_library_finalize(); });
     atlas4py::pybind_submodule_library(m);
+    atlas4py::pybind_submodule_mpi(m);
     atlas4py::pybind_submodule_dlpack(m);
     atlas4py::pybind_submodule_function(m);
     atlas4py::pybind_submodule_functionspace(m);
