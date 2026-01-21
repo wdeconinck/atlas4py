@@ -37,13 +37,13 @@ void pybind_grid(py::module_ &m) {
         .def( py::init( [](py::array_t<double> _xy) {
             py::buffer_info xy = _xy.request();
             auto xy_data = _xy.unchecked<2>();
-            auto points = new std::vector<PointXY>(xy.size/2);
+            auto points = std::make_unique<std::vector<PointXY>>(xy.size/2);
             auto& p = *points;
             for(size_t n=0; n<p.size(); ++n) {
                 p[n][0] = xy_data(n,0);
                 p[n][1] = xy_data(n,1);
             }
-            return UnstructuredGrid(points);
+            return UnstructuredGrid(points.release());
         } ) )
         .def( py::init( [](py::array_t<double> _x, py::array_t<double> _y) {
             py::buffer_info x = _x.request();
@@ -51,13 +51,13 @@ void pybind_grid(py::module_ &m) {
             auto x_data = _x.unchecked<1>();
             auto y_data = _y.unchecked<1>();
             ATLAS_ASSERT(x.size == y.size);
-            auto points = new std::vector<PointXY>(x.size);
+            auto points = std::make_unique<std::vector<PointXY>>(x.size);
             auto& p = *points;
             for(size_t n=0; n<p.size(); ++n) {
                 p[n][0] = x_data(n);
                 p[n][1] = y_data(n);
             }
-            return UnstructuredGrid(points);
+            return UnstructuredGrid(points.release());
         } ) );
 
     py::class_<grid::Spacing>( m, "Spacing" )

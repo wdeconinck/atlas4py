@@ -125,9 +125,12 @@ def run(grib_file_path):
 
 
 def main():
-    import sys
-    grib_file_path = sys.argv[1]
-    run(grib_file_path)
+   import sys
+   if len(sys.argv) < 2:
+      raise RuntimeError('Expected grib_file_path as argument')
+
+   grib_file_path = sys.argv[1]
+   run(grib_file_path)
 
 if __name__ == '__main__':
     main()
