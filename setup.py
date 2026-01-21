@@ -93,7 +93,11 @@ class CMakeBuild(build_ext):
         if not extdir.endswith(os.path.sep):
             extdir += os.path.sep
 
-        os.makedirs(self.build_temp, exist_ok=True)
+        build_dir = self.build_temp
+        if os.environ["ATLAS4PY_BUILD_DIR"]:
+            build_dir = os.environ["ATLAS4PY_BUILD_DIR"]
+
+        os.makedirs(build_dir, exist_ok=True)
         cfg = "Debug" if self.debug else "Release"
 
         # Run CMake configure
@@ -112,13 +116,13 @@ class CMakeBuild(build_ext):
             "-DATLAS4PY_ATLAS_VERSION=" + VERSIONS["atlas"],
             "-DATLAS4PY_PYBIND11_VERSION=" + VERSIONS["pybind11"],
         ]
-        # print(f"./{self.build_temp}$ " + " ".join(["cmake", ext.sourcedir] + cmake_args))
-        subprocess.check_call(["cmake", ext.sourcedir] + cmake_args, cwd=self.build_temp)
+        # print(f"./{build_dir}$ " + " ".join(["cmake", ext.sourcedir] + cmake_args))
+        subprocess.check_call(["cmake", ext.sourcedir] + cmake_args, cwd=build_dir)
 
         # Run CMake build
         print("-" * 10, "Building extensions", "-" * 40)
         build_args = ["--config", cfg, "-j", str(BUILD_JOBS)]
-        subprocess.check_call(["cmake", "--build", "."] + build_args, cwd=self.build_temp)
+        subprocess.check_call(["cmake", "--build", "."] + build_args, cwd=build_dir)
 
 
 PACKAGE_VERSION = "0.35.1.dev14"
