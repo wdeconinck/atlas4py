@@ -81,5 +81,6 @@ CPMAddPackage("gh:pybind/pybind11@3.0") # CPMAddPackage("gh:pybind/pybind11@${AT
 CPMAddPackage("gh:dmlc/dlpack@1.2")
 
 pybind11_add_module(_atlas4py _atlas4py.cpp)
+target_include_directories(_atlas4py PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_link_libraries(_atlas4py PRIVATE atlas)
 target_link_libraries(_atlas4py PRIVATE dlpack::dlpack)
