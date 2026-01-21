@@ -13,3 +13,5 @@ def make_view(field):
     import numpy as np
     return np.array(field, copy=False)
 
+library.initialize()
+library.register_finalize_at_exit()

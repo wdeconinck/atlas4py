@@ -37,14 +37,27 @@ void pybind_library_initialize() {
 void pybind_library_finalize() {
     atlas::finalise();
 };
+namespace library {
+static bool finalize_at_exit = true;
+}
 
 void pybind_submodule_library(py::module_ &m) {
     auto m_library = m.def_submodule("library", "Library submodule");
+    m_library.attr("version") = atlas::Library::instance().version();
     m_library.def("initialize", []() { pybind_library_initialize(); })
              .def("initialise", []() { pybind_library_initialize(); })
              .def("finalize",   []() { pybind_library_finalize(); })
-             .def("finalise",   []() { pybind_library_finalize(); });
-    m_library.attr("version") = atlas::Library::instance().version();
+             .def("finalise",   []() { pybind_library_finalize(); })
+             .def("finalize_at_exit", [](bool value) {
+                    atlas4py::library::finalize_at_exit = value;
+                })
+             .def("register_finalize_at_exit", []() {
+                auto atexit = py::module_::import("atexit");
+                atexit.attr("register")(py::cpp_function([]() {
+                    if (atlas4py::library::finalize_at_exit) {
+                        pybind_library_finalize();
+                    }
+                }));});
 }
 
 }  // namespace atlas4py
