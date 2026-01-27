@@ -41,6 +41,7 @@ test = ['pytest', 'pytest-cache']
 
 [tool.scikit-build]
 minimum-version = '0.5'
+build-dir="build/{wheel_tag}"
 cmake.minimum-version = '3.25'
 cmake.verbose = true
 cmake.source-dir = "src/atlas4py"
@@ -48,8 +49,7 @@ cmake.build-type = "Release"
 cmake.args = [
     "-DATLAS4PY_ECBUILD_VERSION=3.9.1",
     "-DATLAS4PY_ECKIT_VERSION=1.28.6",
-    "-DATLAS4PY_ATLAS_VERSION=0.41.1",
-    "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=build",
+    "-DATLAS4PY_ATLAS_VERSION=0.41.1"
 ]
 wheel.expand-macos-universal-tags = true
 wheel.install-dir = "atlas4py"
