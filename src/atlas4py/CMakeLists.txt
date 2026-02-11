@@ -19,7 +19,7 @@ if (NOT SKBUILD)
     following command that avoids a costly creation of a new virtual
     environment at every compilation:
     =====================================================================
-    $ pip install pybind11 scikit-build-core
+    $ pip install nanobind scikit-build-core
     $ pip install --no-build-isolation -ve ${PROJECT_ROOT_DIR}
     =====================================================================
     You may optionally add -Ceditable.rebuild=true to auto-rebuild when
@@ -49,12 +49,13 @@ set(CMAKE_CXX_STANDARD 17)
 include(cmake/atlas4py_add_atlas.cmake)
 atlas4py_add_atlas()
 
-### Find pybind11
+### Find nanobind
 
-message( STATUS "${PROJECT_NAME}: find_package(pybind11 CONFIG)..." )
-find_package(pybind11 CONFIG)
-if (NOT pybind11_FOUND)
-    message( FATAL_ERROR "pybind11 not found. Please install pybind11 or use pip to install this package." )
+message( STATUS "${PROJECT_NAME}: find_package(nanobind CONFIG)..." )
+find_package(Python COMPONENTS Interpreter Development REQUIRED)
+find_package(nanobind CONFIG)
+if (NOT nanobind_FOUND)
+    message( FATAL_ERROR "nanobind not found. Please install nanobind or use pip to install this package." )
 endif()
 
 ### RPATH handling
@@ -72,7 +73,7 @@ set( CMAKE_BUILD_WITH_INSTALL_RPATH      TRUE  ) # build with *relative* rpaths 
 
 ### Python bindings module atlas4py
 
-pybind11_add_module(_atlas4py _atlas4py.cpp)
+nanobind_add_module(_atlas4py _atlas4py.cpp)
 target_link_libraries(_atlas4py PUBLIC atlas)
 target_compile_definitions(_atlas4py PRIVATE ATLAS4PY_VERSION_STRING=${PROJECT_VERSION_FULL})
 
