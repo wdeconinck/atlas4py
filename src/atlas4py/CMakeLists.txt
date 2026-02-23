@@ -46,10 +46,8 @@ endif()
 
 set(CMAKE_CXX_STANDARD 17)
 
-include(cmake/atlas4py_dependencies.cmake)
-
-atlas4py_find_dependencies()
-atlas4py_add_missing_dependencies()
+include(cmake/atlas4py_add_atlas.cmake)
+atlas4py_add_atlas()
 
 ### Find pybind11
 
